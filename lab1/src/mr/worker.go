@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 )
 import "log"
 import "net/rpc"
@@ -76,6 +78,40 @@ func doMap(job Job, taskId string, mapf func(string, string) []KeyValue) {
 	}
 	kva := mapf(job.FileNames[0], string(content))
 	sort.Sort(ByKey(kva))
+	tmps := make([]*os.File, job.NReduce)
+	for i := 0; i < job.NReduce; i++ {
+		tmps[i], err = os.CreateTemp("./", "temp_map_")
+		if err != nil {
+			log.Fatal("error occur creating temp file")
+		}
+	}
+	defer func() {
+		for i := 0; i < job.NReduce; i++ {
+			err := tmps[i].Close()
+			if err != nil {
+				log.Fatal("error occur closing temp file")
+			}
+		}
+	}()
+
+	for _, kv := range kva {
+		hash := ihash(kv.Key) % job.NReduce
+		fmt.Fprintf(tmps[hash], "%v, %v\n", kv.Key, kv.Value)
+	}
+	for i := 0; i < job.NReduce; i++ {
+		taskId := strings.Split(job.FileNames[0], "-")[1]
+		os.Rename(tmps[i].Name(), "mr-"+taskId+"-"+strconv.Itoa(i))
+	}
+
+	newArgs := &ReportSuccessArgs{job, taskId}
+	newReply := &ReportSuccessReply{}
+	log.Printf("Job %v completed, sending report", job.FileNames)
+
+	call("Coordinator.ReportSuccess", newArgs, newReply)
+
+}
+
+func doReduce(job Job, taskId string, reducef func(string, string) string) {
 
 }
 

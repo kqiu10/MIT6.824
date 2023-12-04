@@ -1,6 +1,10 @@
 package mr
 
-import "log"
+import (
+	"errors"
+	"log"
+	"sync"
+)
 import "net"
 import "os"
 import "net/rpc"
@@ -8,7 +12,16 @@ import "net/http"
 
 type Coordinator struct {
 	// Your definitions here.
-
+	jobs                []Job
+	rawFiles            []string
+	reportChannelByUUID sync.Map
+	availableJobs       chan Job
+	successJobs         chan Job
+	nReduce             int
+	successJobsSet      map[string]bool
+	isSuccess           bool
+	mutex               sync.Mutex
+	addReduce           bool
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -59,4 +72,15 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	c.server()
 	return &c
+}
+
+func (c *Coordinator) ReportSuccess(args *ReportSuccessArgs, reply *ReportSuccessReply) error {
+	log.Printf("ReportSuccess job file length: %v", len(args.Job.FileNames))
+	value, ok := c.reportChannelByUUID.Load(args.TaskId)
+	if !ok {
+		return errors.New("cannot read given uuid")
+	}
+	reportChannel := value.(chan Job)
+	reportChannel <- args.Job
+	return nil
 }
