@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -76,42 +77,107 @@ func doMap(job Job, taskId string, mapf func(string, string) []KeyValue) {
 	if err != nil {
 		log.Fatalf("Cannot close file, %v", job.FileNames)
 	}
-	kva := mapf(job.FileNames[0], string(content))
-	sort.Sort(ByKey(kva))
-	tmps := make([]*os.File, job.NReduce)
+	entry := mapf(job.FileNames[0], string(content))
+	sort.Sort(ByKey(entry))
+	tmpFiles := make([]*os.File, job.NReduce)
 	for i := 0; i < job.NReduce; i++ {
-		tmps[i], err = os.CreateTemp("./", "temp_map_")
+		tmpFiles[i], err = os.CreateTemp("./", "temp_map_")
 		if err != nil {
 			log.Fatal("error occur creating temp file")
 		}
 	}
 	defer func() {
 		for i := 0; i < job.NReduce; i++ {
-			err := tmps[i].Close()
+			err := tmpFiles[i].Close()
 			if err != nil {
 				log.Fatal("error occur closing temp file")
 			}
 		}
 	}()
 
-	for _, kv := range kva {
+	for _, kv := range entry {
 		hash := ihash(kv.Key) % job.NReduce
-		fmt.Fprintf(tmps[hash], "%v, %v\n", kv.Key, kv.Value)
+		fmt.Fprintf(tmpFiles[hash], "%v, %v\n", kv.Key, kv.Value)
 	}
 	for i := 0; i < job.NReduce; i++ {
 		taskId := strings.Split(job.FileNames[0], "-")[1]
-		os.Rename(tmps[i].Name(), "mr-"+taskId+"-"+strconv.Itoa(i))
+		os.Rename(tmpFiles[i].Name(), "mr-"+taskId+"-"+strconv.Itoa(i))
 	}
 
 	newArgs := &ReportSuccessArgs{job, taskId}
 	newReply := &ReportSuccessReply{}
-	log.Printf("Job %v completed, sending report", job.FileNames)
+	log.Printf("Map Job %v completed, sending report", job.FileNames)
 
 	call("Coordinator.ReportSuccess", newArgs, newReply)
 
 }
 
-func doReduce(job Job, taskId string, reducef func(string, string) string) {
+func doReduce(job Job, taskId string, reducef func(string, []string) string) {
+	entry := make([][]KeyValue, len(job.FileNames))
+	for key, fileName := range job.FileNames {
+		file, err := os.Open(fileName)
+		if err != nil {
+			log.Fatalf("cannot open %v", fileName)
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		for scanner.Scan() {
+			tokens := strings.Split(scanner.Text(), " ")
+			entry[key] = append(entry[key], KeyValue{tokens[0], tokens[1]})
+		}
+
+	}
+	ids := make([]int, len(job.FileNames))
+	ofile, _ := os.CreateTemp("./", "temp_reduce_")
+	defer ofile.Close()
+	values := []string{}
+	prevKey := ""
+	/**
+	For each key-value pair in entry
+	count the number of keys and store them in ids
+	store all values under the same key in values
+	*/
+	for {
+		findNext := false
+		var nextI int
+		for i, pair := range entry {
+			if ids[i] < len(entry) {
+				if !findNext {
+					findNext = true
+					nextI = i
+				} else if strings.Compare(pair[ids[i]].Key, entry[nextI][ids[nextI]].Key) < 0 {
+					nextI = i
+				}
+			}
+		}
+		if findNext {
+			nextKV := entry[nextI][ids[nextI]]
+			if prevKey == "" || prevKey == nextKV.Key {
+				prevKey = nextKV.Key
+				values = append(values, nextKV.Value)
+			} else {
+				prevKey = nextKV.Key
+				values = []string{nextKV.Value}
+			}
+			ids[nextI]++
+		} else {
+			break
+		}
+	}
+
+	if prevKey != "" {
+		fmt.Fprintf(ofile, "%v, %v\n", prevKey, reducef(prevKey, values))
+	}
+	taskIdentifier := strings.Split(job.FileNames[0], "-")[2]
+	os.Rename(ofile.Name(), "mr-out-"+taskIdentifier)
+
+	newArgs := &ReportSuccessArgs{job, taskId}
+	newReply := &ReportSuccessReply{}
+
+	log.Printf("Reduce Job %v completed, sending report", job.FileNames)
+
+	call("Coordinator.ReportSuccess", newArgs, newReply)
 
 }
 
