@@ -61,10 +61,25 @@ func (c *Coordinator) Done() bool {
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
+	c := Coordinator{
+		rawFiles:       files,
+		availableJobs:  make(chan Job, 100),
+		successJobs:    make(chan Job, 100),
+		nReduce:        nReduce,
+		isSuccess:      false,
+		successJobsSet: make(map[string]bool),
+		addReduce:      false,
+	}
 
 	// Your code here.
-
+	for _, fileName := range files {
+		c.availableJobs <- Job{
+			JobType:   MapJob,
+			FileNames: []string{fileName},
+			NReduce:   nReduce,
+		}
+	}
+	go c.handleSuccessJobs()
 	c.server()
 	return &c
 }
