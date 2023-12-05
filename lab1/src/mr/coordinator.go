@@ -3,6 +3,8 @@ package mr
 import (
 	"errors"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 )
 import "net"
@@ -22,6 +24,60 @@ type Coordinator struct {
 	isSuccess           bool
 	mutex               sync.Mutex
 	addReduce           bool
+}
+
+func (c *Coordinator) HandleSuccessJobs() {
+	for {
+		job, ok := <-c.successJobs
+		if !ok {
+			break
+		}
+		switch job.JobType {
+		case MapJob:
+			log.Println("Start handling Map jobs")
+			taskId := strings.Split(job.FileNames[0], "-")[1]
+			if _, exist := c.successJobsSet[taskId]; !exist {
+				log.Println("Find a new taskIdentifier in success job")
+				if len(c.successJobs) == len(c.rawFiles) {
+					c.mutex.Lock()
+					defer c.mutex.Unlock()
+					if c.addReduce {
+						break
+					}
+					log.Println("Completed reading all map tasks")
+
+					for j := 0; j < c.nReduce; j++ {
+						var fileNames []string
+						for i := 0; i < len(c.rawFiles); i++ {
+							taskId := strings.Split(c.rawFiles[i], "-")[1]
+							fileNames = append(fileNames, "mr-"+taskId+"-"+strconv.Itoa(j))
+						}
+
+						c.availableJobs <- Job{
+							JobType:   ReduceJob,
+							FileNames: fileNames,
+							NReduce:   c.nReduce,
+						}
+
+					}
+					c.addReduce = true
+					log.Println("Completed adding all reduce tasks")
+				}
+			}
+		case ReduceJob:
+			log.Println("Start handling reduce jobs")
+			for _, fileName := range job.FileNames {
+				taskId := "reduce_" + strings.SplitN(fileName, "-", 2)[1]
+				c.successJobsSet[taskId] = true
+			}
+			if len(c.successJobsSet) == len(c.rawFiles)*(c.nReduce+1) {
+				log.Println("All reduce tasks success!")
+				close(c.availableJobs)
+				close(c.successJobs)
+				c.isSuccess = true
+			}
+		}
+	}
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -79,7 +135,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			NReduce:   nReduce,
 		}
 	}
-	go c.handleSuccessJobs()
+	go c.HandleSuccessJobs()
 	c.server()
 	return &c
 }
