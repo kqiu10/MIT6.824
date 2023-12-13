@@ -39,7 +39,7 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	// Your worker implementation here.
-	//log.SetOutput(io.Discard)
+	log.SetOutput(io.Discard)
 	for {
 		args := &MapArgs{}
 		reply := &MapReply{}
