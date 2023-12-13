@@ -39,13 +39,14 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	// Your worker implementation here.
-
+	//log.SetOutput(io.Discard)
 	for {
 		args := &MapArgs{}
 		reply := &MapReply{}
 		log.Println("Getting Task...")
-		call("Coordinator.GetTask", args, reply)
+		call("Coordinator.Mapreduce", args, reply)
 		job := reply.Job
+		log.Println("details of Task.job", job)
 		if job.JobType == NoJob {
 			break
 		}
@@ -55,7 +56,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			doMap(job, reply.TaskId, mapf)
 		case ReduceJob:
 			log.Printf("Working on the reduce work, %v, File name, %v\n", reply.TaskId, job.FileNames[0])
-			doReduce(job, reply.TaskId, reducef)
+			doReduce(reply.Job, reply.TaskId, reducef)
 		}
 	}
 
@@ -73,10 +74,8 @@ func doMap(job Job, taskId string, mapf func(string, string) []KeyValue) {
 	if err != nil {
 		log.Fatalf("cannot read file, %v", job.FileNames)
 	}
-	err = file.Close()
-	if err != nil {
-		log.Fatalf("Cannot close file, %v", job.FileNames)
-	}
+	file.Close()
+
 	entry := mapf(job.FileNames[0], string(content))
 	sort.Sort(ByKey(entry))
 	tmpFiles := make([]*os.File, job.NReduce)
@@ -88,10 +87,7 @@ func doMap(job Job, taskId string, mapf func(string, string) []KeyValue) {
 	}
 	defer func() {
 		for i := 0; i < job.NReduce; i++ {
-			err := tmpFiles[i].Close()
-			if err != nil {
-				log.Fatal("error occur closing temp file")
-			}
+			tmpFiles[i].Close()
 		}
 	}()
 
@@ -106,7 +102,8 @@ func doMap(job Job, taskId string, mapf func(string, string) []KeyValue) {
 
 	newArgs := &ReportSuccessArgs{job, taskId}
 	newReply := &ReportSuccessReply{}
-	log.Printf("Map Job %v completed, sending report", job.FileNames)
+	log.Println("Job finishes, calling Coordinator.ReportSuccess", newArgs)
+	log.Printf("Map Job %v completed, taskId: %v, sending report", job.JobType, taskId)
 
 	call("Coordinator.ReportSuccess", newArgs, newReply)
 
@@ -142,7 +139,7 @@ func doReduce(job Job, taskId string, reducef func(string, []string) string) {
 		findNext := false
 		var nextI int
 		for i, pair := range entry {
-			if ids[i] < len(entry) {
+			if ids[i] < len(pair) {
 				if !findNext {
 					findNext = true
 					nextI = i
@@ -153,12 +150,17 @@ func doReduce(job Job, taskId string, reducef func(string, []string) string) {
 		}
 		if findNext {
 			nextKV := entry[nextI][ids[nextI]]
-			if prevKey == "" || prevKey == nextKV.Key {
+			if prevKey == "" {
 				prevKey = nextKV.Key
 				values = append(values, nextKV.Value)
 			} else {
-				prevKey = nextKV.Key
-				values = []string{nextKV.Value}
+				if nextKV.Key == prevKey {
+					values = append(values, nextKV.Value)
+				} else {
+					fmt.Fprintf(ofile, "%v %v\n", prevKey, reducef(prevKey, values))
+					prevKey = nextKV.Key
+					values = []string{nextKV.Value}
+				}
 			}
 			ids[nextI]++
 		} else {

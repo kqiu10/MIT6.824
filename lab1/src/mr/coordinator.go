@@ -1,16 +1,22 @@
 package mr
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 )
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
 
 type Coordinator struct {
 	// Your definitions here.
@@ -38,14 +44,15 @@ func (c *Coordinator) HandleSuccessJobs() {
 			taskId := strings.Split(job.FileNames[0], "-")[1]
 			if _, exist := c.successJobsSet[taskId]; !exist {
 				log.Println("Find a new taskIdentifier in success job")
-				if len(c.successJobs) == len(c.rawFiles) {
+				c.successJobsSet[taskId] = true
+				if len(c.successJobsSet) == len(c.rawFiles) {
 					c.mutex.Lock()
 					defer c.mutex.Unlock()
 					if c.addReduce {
 						break
 					}
 					log.Println("Completed reading all map tasks")
-
+					// add Reduce jobs
 					for j := 0; j < c.nReduce; j++ {
 						var fileNames []string
 						for i := 0; i < len(c.rawFiles); i++ {
@@ -61,7 +68,7 @@ func (c *Coordinator) HandleSuccessJobs() {
 
 					}
 					c.addReduce = true
-					log.Println("Completed adding all reduce tasks")
+					log.Printf("after adding reduce, len(c.availableJobs) is %v", len(c.availableJobs))
 				}
 			}
 		case ReduceJob:
@@ -82,7 +89,48 @@ func (c *Coordinator) HandleSuccessJobs() {
 
 // Your code here -- RPC handlers for the worker to call.
 func (c *Coordinator) Mapreduce(args *MapArgs, reply *MapReply) error {
+	log.Println("Mapreduce RPC received!")
+	for {
+		job, ok := <-c.availableJobs
+		if !ok {
+			log.Println("No more new tasks!")
+			*reply = MapReply{Job: Job{
+				JobType: NoJob,
+				NReduce: c.nReduce,
+			}}
+			return nil
+		}
+		reportChannel := make(chan Job)
+		id := uuid.New().String()
 
+		c.reportChannelByUUID.Store(id, reportChannel)
+		*reply = MapReply{Job: job, TaskId: id}
+		go func() {
+			log.Println("Wait for reportChannel to send job...")
+			select {
+			case job := <-reportChannel:
+				log.Println("Get job in reportChannel")
+				log.Printf("length of file in reportChannel %v", len(job.FileNames))
+				c.successJobs <- job
+
+			case <-time.After(10 * time.Second):
+				log.Println("timeout in reportChannel")
+				c.availableJobs <- job
+			}
+		}()
+		return nil
+
+	}
+
+}
+
+func makeRandString(n int) (string, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b)[:n], nil
 }
 
 // an example RPC handler.
@@ -135,6 +183,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			NReduce:   nReduce,
 		}
 	}
+	fmt.Println("Starting map reduce job")
 	go c.HandleSuccessJobs()
 	c.server()
 	return &c
