@@ -23,6 +23,7 @@ type AppendEntriesArgs struct {
 	Term         int
 	LeaderId     int
 	PrevLogIndex int
+	PrevLogTerm  int
 	Entries      []Entry
 	LeaderCommit int
 }

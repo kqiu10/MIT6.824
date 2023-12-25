@@ -146,32 +146,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 }
 
-// example RequestVote RPC handler.
-func (rf *Raft) RequestVote(request *RequestVoteArgs, response *RequestVoteReply) {
-	// Your code here (2A, 2B).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	utils.Debug(utils.DVote, "S%d C%d asking vote", rf.me, request.CandidateId)
-	if request.Term < rf.currentTerm {
-		utils.Debug(utils.DVote, "S%d Term is higher than C%d, decline it", rf.me, request.CandidateId)
-		response.Term, response.VoteGranted = rf.currentTerm, false
-		return
-	}
-	if request.Term > rf.currentTerm {
-		rf.currentTerm, rf.votedFor = request.Term, Voted_nil
-		utils.Debug(utils.DVote, "S%d Term is lower than C%d, turn to follower && reset voted_for", rf.me, request.CandidateId)
-		rf.ChangeState(FollowerState)
-	}
-	if (rf.votedFor == Voted_nil || rf.votedFor == request.CandidateId) && !rf.isUpToDate(request.LastLogIndex, request.LastLogTerm) {
-		utils.Debug(utils.DVote, "S%d C%d not up-to-date, decline it{arg:%+v, index:%d term:%d}",
-			rf.me, request.CandidateId, request, rf.lastLog().Index, rf.lastLog().Term)
-		response.Term, response.VoteGranted = rf.currentTerm, false
-	}
-	response.Term, response.VoteGranted = rf.currentTerm, true
-	utils.Debug(utils.DVote, "S%d Granting Vote to S%d at T%d", rf.me, rf.votedFor, rf.currentTerm)
-	return
-}
-
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
 // expects RPC arguments in args.
@@ -208,6 +182,17 @@ func (rf *Raft) sendRequestVote(server int, request *RequestVoteArgs, response *
 	}
 	utils.Debug(utils.DInfo, "S%d get RequestVote response from %d {%+v}", rf.me, server, response)
 
+	return ok
+}
+
+func (rf *Raft) sendAppendEntries(server int, request *AppendEntriesArgs, response *AppendEntriesReply) bool {
+	utils.Debug(utils.DInfo, "S%d send AppendEntries request to %d {%+v}", rf.me, server, request)
+	ok := rf.peers[server].Call("Raft.AppendEntries", request, response)
+	if !ok {
+		utils.Debug(utils.DWarn, "S%d call (AppendEntries)rpc to C%d error", rf.me, server)
+		return ok
+	}
+	utils.Debug(utils.DInfo, "S%d get AppendEntries response from %d {%+v}", rf.me, server, response)
 	return ok
 }
 

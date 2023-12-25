@@ -1,29 +1,10 @@
-package raft
+package utils
 
 import (
 	"fmt"
 	"log"
 	"time"
 )
-
-// type of Servers
-const (
-	leaderState    State = "Leader"
-	followerState  State = "Follower"
-	candidateState State = "Candidate"
-)
-
-// election
-const (
-	voted_nil int = -12345
-)
-
-// log Entry
-type Entry struct {
-	Index int
-	Term  int
-	Cmd   interface{}
-}
 
 // Debugging
 const debug = false
