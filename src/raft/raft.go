@@ -18,10 +18,12 @@ package raft
 //
 
 import (
+	"6.824/utils"
+	"time"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
-
 	//	"6.824/labgob"
 	"6.824/labrpc"
 )
@@ -70,10 +72,12 @@ type Raft struct {
 	lastApplied int
 
 	// volatile state on leader
-	nextIndex  []int
-	matchIndex []int
+	nextIndex  []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+	matchIndex []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 
-	state State
+	state         State
+	electionTime  time.Time
+	heartbeatTime time.Time
 }
 
 // return currentTerm and whether this server
@@ -142,47 +146,29 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 }
 
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
-type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
-	Term         int
-	CandidateId  int
-	LastLogIndex int
-	LastLogTerm  int
-}
-
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-type RequestVoteReply struct {
-	// Your data here (2A).
-	Term        int
-	VoteGranted bool
-}
-
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(request *RequestVoteArgs, response *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer DPrintf("{Node %v}'s state is {state %v,term %v,commitIndex %v,lastApplied %v,firstLog %v,lastLog %v} before processing requestVoteRequest %v and reply requestVoteResponse %v",
-		rf.me, rf.state, rf.currentTerm, rf.commitIndex, rf.lastApplied, request, response)
+	utils.Debug(utils.DVote, "S%d C%d asking vote", rf.me, request.CandidateId)
 	if request.Term < rf.currentTerm {
-		DPrintf("{raft: %v} term is higher than request %v, decline the request", rf.currentTerm, request.Term)
+		utils.Debug(utils.DVote, "S%d Term is higher than C%d, decline it", rf.me, request.CandidateId)
 		response.Term, response.VoteGranted = rf.currentTerm, false
 		return
 	}
 	if request.Term > rf.currentTerm {
-		rf.currentTerm, rf.votedFor = request.Term, voted_nil
-		DPrintf("{raft: %v} term is lower than request %v, turn the raft to follower and reset its voted_for", rf.currentTerm, request.Term)
-		rf.ChangeState(followerState)
+		rf.currentTerm, rf.votedFor = request.Term, Voted_nil
+		utils.Debug(utils.DVote, "S%d Term is lower than C%d, turn to follower && reset voted_for", rf.me, request.CandidateId)
+		rf.ChangeState(FollowerState)
 	}
-	if (rf.votedFor == voted_nil || rf.votedFor == request.CandidateId) && !rf.isUpToDate(request.LastLogIndex, request.LastLogTerm) {
-		DPrintf("rf %v is not up-to-date, decline the request", rf.me)
+	if (rf.votedFor == Voted_nil || rf.votedFor == request.CandidateId) && !rf.isUpToDate(request.LastLogIndex, request.LastLogTerm) {
+		utils.Debug(utils.DVote, "S%d C%d not up-to-date, decline it{arg:%+v, index:%d term:%d}",
+			rf.me, request.CandidateId, request, rf.lastLog().Index, rf.lastLog().Term)
 		response.Term, response.VoteGranted = rf.currentTerm, false
 	}
 	response.Term, response.VoteGranted = rf.currentTerm, true
-	DPrintf("request %v is granted", request.Term)
+	utils.Debug(utils.DVote, "S%d Granting Vote to S%d at T%d", rf.me, rf.votedFor, rf.currentTerm)
 	return
 }
 
@@ -213,9 +199,14 @@ func (rf *Raft) RequestVote(request *RequestVoteArgs, response *RequestVoteReply
 // capitalized all field names in structs passed over RPC, and
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+func (rf *Raft) sendRequestVote(server int, request *RequestVoteArgs, response *RequestVoteReply) bool {
+	utils.Debug(utils.DInfo, "S%d send RequestVote request to %d {%+v}", rf.me, server, request)
+	ok := rf.peers[server].Call("Raft.RequestVote", request, response)
+	if !ok {
+		utils.Debug(utils.DWarn, "S%d call (RequestVote)rpc to C%d error", rf.me, server)
+		return ok
+	}
+	utils.Debug(utils.DInfo, "S%d get RequestVote response from %d {%+v}", rf.me, server, response)
 
 	return ok
 }
@@ -265,10 +256,35 @@ func (rf *Raft) killed() bool {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
-
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
+		rf.mu.Lock()
+		switch rf.state {
+		case FollowerState:
+			if rf.electionTimeout() {
+				rf.ChangeState(candidateState)
+				utils.Debug(utils.DInfo, "S%d Election timeout, starting election, T%d", rf.me, rf.currentTerm)
+				rf.doElection()
+				rf.resetElectionTime()
+			}
+		case candidateState:
+			if rf.electionTimeout() {
+				rf.ChangeState(candidateState)
+				utils.Debug(utils.DInfo, "S%d Election timeout, starting election, T%d", rf.me, rf.currentTerm)
+				rf.doElection()
+				rf.resetElectionTime()
+			}
+		case leaderState:
+			if rf.heartbeatTimeout() {
+				utils.Debug(utils.DInfo, "S%d heartbeat timeout, starting sending heartbeat, T%d", rf.me, rf.currentTerm)
+				rf.doAppendEntries()
+				rf.resetHeartbeatTime()
+			}
+
+		}
+		rf.mu.Unlock()
+		time.Sleep(time.Duration(gap_time) * time.Millisecond)
 
 	}
 }
@@ -290,7 +306,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.init()
 
+	utils.Debug(utils.DClient, "S%d Started && init success", rf.me)
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
