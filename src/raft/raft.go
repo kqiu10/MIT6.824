@@ -209,13 +209,24 @@ func (rf *Raft) sendAppendEntries(server int, request *AppendEntriesArgs, respon
 // term. the third return value is true if this server believes it is
 // the leader.
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
+	rf.mu.Lock()
+	defer rf.mu.Lock()
 
 	// Your code here (2B).
+	if rf.state != leaderState {
+		utils.Debug(utils.DClient, "S%d Not leader cmd: %+v", rf.me, command)
 
-	return index, term, isLeader
+		return -1, -1, false
+	}
+
+	index := rf.lastLogIndex() + 1
+	rf.log = append(rf.log, Entry{index, rf.currentTerm, command})
+	rf.persist()
+
+	utils.Debug(utils.DClient, "S%d cmd: %+v, logIndex: %d", rf.me, command, rf.lastLogIndex())
+	rf.doAppendEntries()
+
+	return index, rf.currentTerm, true
 }
 
 // the tester doesn't halt goroutines created by Raft after each test,
