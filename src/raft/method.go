@@ -52,6 +52,17 @@ func (rf *Raft) transfer(index int) (int, int) {
 	return index - begin, 0
 }
 
+func (rf *Raft) getEntry(index int) (Entry, int) {
+	begin := rf.frontLogIndex()
+	end := rf.lastLogIndex()
+
+	if index < begin || index > end {
+		utils.Debug(utils.DWarn, "S%d log out of range: %d, [%d, %d]", rf.me, index, begin, end)
+		return Entry{magic_index, magic_term, nil}, -1
+	}
+	return rf.log[index-begin], 0
+}
+
 func (rf *Raft) isUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	entry := rf.lastLog()
 	index := entry.Index
@@ -62,6 +73,40 @@ func (rf *Raft) isUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	}
 	return lastLogTerm > term
 
+}
+
+func (rf *Raft) toCommit() {
+	// append entries before commit
+	if rf.commitIndex >= rf.lastLogIndex() {
+		return
+	}
+
+	for i := rf.lastLogIndex(); i > rf.commitIndex; i-- {
+		entry, err := rf.getEntry(i)
+		if err < 0 {
+			continue
+		}
+
+		if entry.Term != rf.currentTerm {
+			return
+		}
+
+		cnt := 1 // count self
+		for j, match := range rf.matchIndex {
+			if j != rf.me && match >= i {
+				cnt++
+			}
+
+			if cnt > len(rf.peers)/2 {
+				rf.commitIndex = i
+				utils.Debug(utils.DCommit, "S%d commit to %v", rf.me, rf.commitIndex)
+				rf.applyCond.Signal()
+				return
+			}
+		}
+
+	}
+	utils.Debug(utils.DCommit, "S%d don't have half replicated from %v to %v now", rf.me, rf.commitIndex, rf.lastLogIndex())
 }
 
 func (rf *Raft) init() {
