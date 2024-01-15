@@ -31,4 +31,7 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+	XTerm   int // for fast backup
+	XIndex  int
+	XLen    int
 }
