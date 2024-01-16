@@ -45,7 +45,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-	if args.PrevLogIndex > rf.frontLogIndex() {
+	if args.PrevLogIndex > rf.lastLogIndex() {
 		reply.Success = false
 		reply.XTerm = -1
 		reply.XLen = args.PrevLogIndex - rf.lastLogIndex()
@@ -91,7 +91,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.commitIndex = rf.lastLogIndex()
 		}
 		utils.Debug(utils.DCommit, "S%d commit to %v(lastLogIndex: %d)", rf.me, rf.commitIndex, rf.lastLogIndex())
-		rf.applyCond.Signal()
 	}
 }
 

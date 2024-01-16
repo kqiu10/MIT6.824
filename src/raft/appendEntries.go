@@ -12,7 +12,7 @@ func (rf *Raft) doAppendEntries() {
 		wantSendIndex := rf.nextIndex[i] - 1
 		if wantSendIndex < rf.frontLogIndex() {
 			utils.Debug(utils.DError, "S%d S%d index smaller than 0 (%d < 0)", rf.me, i, wantSendIndex)
-			continue
+			return
 		} else {
 			go rf.appendTo(i)
 		}
@@ -37,7 +37,7 @@ func (rf *Raft) appendTo(peer int) {
 	prevLogIndex := rf.nextIndex[peer] - 1
 	idx, err := rf.transfer(prevLogIndex)
 
-	if err == -1 {
+	if err < 0 {
 		rf.mu.Unlock()
 		return
 	}
@@ -83,6 +83,44 @@ func (rf *Raft) appendTo(peer int) {
 		rf.matchIndex[peer] = request.PrevLogIndex + len(request.Entries)
 		rf.toCommit()
 		return
+	}
+
+	// handle exceptions
+	if response.XTerm == -1 {
+		// null slot
+		rf.nextIndex[peer] -= response.XLen
+	} else if response.XTerm > 0 {
+		termNotExit := true
+		for index := rf.nextIndex[peer] - 1; index >= 1; index-- {
+			entry, err := rf.getEntry(index)
+			if err < 0 {
+				continue
+			}
+
+			if entry.Term > response.XTerm {
+				continue
+			}
+
+			if entry.Term == response.XTerm {
+				rf.nextIndex[peer] = index + 1
+				termNotExit = false
+				break
+			}
+
+			if entry.Term < response.XTerm {
+				break
+			}
+		}
+		if termNotExit {
+			rf.nextIndex[peer] = response.XIndex
+		}
+	} else {
+		rf.nextIndex[peer] = response.XIndex
+	}
+
+	// corner case: the smallest nextIndex >= 1
+	if rf.nextIndex[peer] < 1 {
+		rf.nextIndex[peer] = 1
 	}
 
 }

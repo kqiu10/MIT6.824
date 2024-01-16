@@ -100,7 +100,6 @@ func (rf *Raft) toCommit() {
 			if cnt > len(rf.peers)/2 {
 				rf.commitIndex = i
 				utils.Debug(utils.DCommit, "S%d commit to %v", rf.me, rf.commitIndex)
-				rf.applyCond.Signal()
 				return
 			}
 		}
