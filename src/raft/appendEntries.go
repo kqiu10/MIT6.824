@@ -2,6 +2,7 @@ package raft
 
 import "6.824/utils"
 
+// ticker() call doAppendEntries(), ticker() hold lock
 // if a node turn to a leader, leader will call doAppendEntries() to send heartbeat
 func (rf *Raft) doAppendEntries() {
 	for i := 0; i < len(rf.peers); i++ {
@@ -61,7 +62,7 @@ func (rf *Raft) appendTo(peer int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	// state changed or outdue data, ignore
+	// ignore this transition if state changed or outdated data
 	if rf.currentTerm != request.Term || rf.state != leaderState || response.Term < rf.currentTerm {
 		// overdue, ignore
 		utils.Debug(utils.DInfo, "S%d old response from C%d, ignore it", rf.me, peer)
@@ -89,7 +90,7 @@ func (rf *Raft) appendTo(peer int) {
 	if response.XTerm == -1 {
 		// null slot
 		rf.nextIndex[peer] -= response.XLen
-	} else if response.XTerm > 0 {
+	} else if response.XTerm >= 0 {
 		termNotExit := true
 		for index := rf.nextIndex[peer] - 1; index >= 1; index-- {
 			entry, err := rf.getEntry(index)
@@ -100,13 +101,14 @@ func (rf *Raft) appendTo(peer int) {
 			if entry.Term > response.XTerm {
 				continue
 			}
-
+			// Found the first mismatch
 			if entry.Term == response.XTerm {
 				rf.nextIndex[peer] = index + 1
 				termNotExit = false
 				break
 			}
 
+			// Only one mismatch
 			if entry.Term < response.XTerm {
 				break
 			}
@@ -123,4 +125,38 @@ func (rf *Raft) appendTo(peer int) {
 		rf.nextIndex[peer] = 1
 	}
 
+}
+
+func (rf *Raft) toCommit() {
+	// check if entries are appended in the majority of nodes after entries appended in a random node
+	// if true, commit the transition.
+	if rf.commitIndex >= rf.lastLogIndex() {
+		return
+	}
+
+	for i := rf.lastLogIndex(); i > rf.commitIndex; i-- {
+		entry, err := rf.getEntry(i)
+		if err < 0 {
+			continue
+		}
+
+		if entry.Term != rf.currentTerm {
+			return
+		}
+
+		cnt := 1 // count self
+		for j, match := range rf.matchIndex {
+			if j != rf.me && match >= i {
+				cnt++
+			}
+
+			if cnt > len(rf.peers)/2 {
+				rf.commitIndex = i
+				utils.Debug(utils.DCommit, "S%d commit to %v", rf.me, rf.commitIndex)
+				return
+			}
+		}
+
+	}
+	utils.Debug(utils.DCommit, "S%d don't have half replicated from %v to %v now", rf.me, rf.commitIndex, rf.lastLogIndex())
 }

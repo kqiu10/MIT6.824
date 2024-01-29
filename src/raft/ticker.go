@@ -37,8 +37,6 @@ func (rf *Raft) ticker() {
 			if rf.electionTimeout() {
 				rf.ChangeState(candidateState)
 				utils.Debug(utils.DInfo, "S%d Election timeout, starting election, T%d", rf.me, rf.currentTerm)
-				rf.doElection()
-				rf.resetElectionTime()
 			}
 		case candidateState:
 			if rf.electionTimeout() {

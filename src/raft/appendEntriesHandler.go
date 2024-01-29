@@ -39,12 +39,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// prevent election timeouts
 	rf.resetElectionTime()
 
+	// Caused by log trimming so we add
 	if args.PrevLogIndex < rf.frontLogIndex() {
 		reply.XTerm, reply.XIndex, reply.Success = -2, rf.frontLogIndex()+1, false
 		utils.Debug(utils.DInfo, "S%d args's prevLogIndex too smaller(%v < %v)", rf.me, args.PrevLogIndex, rf.frontLogIndex())
 		return
 	}
 
+	// Caused by limited length of log
 	if args.PrevLogIndex > rf.lastLogIndex() {
 		reply.Success = false
 		reply.XTerm = -1
@@ -61,7 +63,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.XTerm = rf.log[index].Term
 		reply.XIndex = args.PrevLogIndex
-		// In case same term duplicates in log entry, iterate from index to head to find the first difference.
+		// In case same term duplicates in log entry, iterate from index to head to find the first idx with difference.
 		for i := index; i > rf.frontLogIndex(); i-- {
 			if rf.log[i-1].Term != reply.XTerm {
 				reply.XIndex = i
@@ -78,6 +80,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			entries := make([]Entry, len(args.Entries))
 			copy(entries, args.Entries)
 			rf.log = append(rf.log, entries...)
+			utils.Debug(utils.DInfo, "S%d conflict, truncate log: %+v", rf.me, rf.log)
 		} else {
 			utils.Debug(utils.DInfo, "S%d no conflict, log: %+v", rf.me, rf.log)
 		}

@@ -43,3 +43,14 @@ func (rf *Raft) RequestVote(request *RequestVoteArgs, response *RequestVoteReply
 	utils.Debug(utils.DVote, "S%d Have voted to S%d at T%d, refuse S%d", rf.me, rf.votedFor, rf.currentTerm, request.CandidateId)
 	return
 }
+
+func (rf *Raft) isUpToDate(lastLogIndex int, lastLogTerm int) bool {
+	entry := rf.lastLog()
+	index := entry.Index
+	term := entry.Term
+
+	if term == lastLogTerm {
+		return lastLogIndex >= index
+	}
+	return lastLogTerm > term
+}

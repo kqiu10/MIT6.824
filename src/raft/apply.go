@@ -1,7 +1,5 @@
 package raft
 
-import "6.824/utils"
-
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make(). set
@@ -45,7 +43,7 @@ func (rf *Raft) applyLog() {
 		}
 
 		rf.mu.Lock()
-		utils.Debug(utils.DCommit, "S%d apply %v - %v", rf.me, rf.lastApplied, commitIndex)
+		//utils.Debug(utils.DCommit, "S%d apply %v - %v", rf.me, rf.lastApplied, commitIndex)
 		if commitIndex > rf.lastApplied {
 			rf.lastApplied = commitIndex
 		}
