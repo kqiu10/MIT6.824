@@ -4,29 +4,6 @@ import (
 	"6.824/utils"
 )
 
-func (rf *Raft) ChangeState(state State) {
-	switch state {
-	case FollowerState:
-		rf.state = FollowerState
-		utils.Debug(utils.DInfo, "S%d converting to %v in T(%d)", rf.me, rf.state, rf.currentTerm)
-
-	case candidateState:
-		rf.currentTerm++
-		// select itself as leader
-		rf.votedFor = rf.me
-		rf.persist()
-		rf.state = candidateState
-		utils.Debug(utils.DTerm, "S%d converting to %v in T(%d)", rf.me, rf.state, rf.currentTerm)
-
-	case leaderState:
-		rf.state = leaderState
-		rf.leaderInit()
-		utils.Debug(utils.DTerm, "S%d converting to %v in T(%d)", rf.me, rf.state, rf.currentTerm)
-		// Send initial empty AppendEntries RPCs to each server, and repeat during idle periods to prevent election timeouts
-		rf.doAppendEntries()
-	}
-}
-
 func (rf *Raft) lastLog() Entry {
 	return rf.log[len(rf.log)-1]
 }
