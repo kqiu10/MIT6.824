@@ -18,7 +18,9 @@ package raft
 //
 
 import (
+	"6.824/labgob"
 	"6.824/utils"
+	"bytes"
 	"time"
 
 	//	"bytes"
@@ -84,6 +86,7 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+	rf.persister.SaveRaftState(rf.raftState())
 }
 
 // restore previously persisted state.
@@ -104,6 +107,25 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+
+	var log []Entry
+	var currentTerm, votedFor int
+
+	if d.Decode(&log) != nil || d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil {
+		utils.Debug(utils.DError, "S%d decode fail", rf.me)
+		panic("decode fail")
+	}
+
+	// log index at least is 1
+	rf.log = make([]Entry, len(log))
+	copy(rf.log, log)
+	rf.lastApplied = rf.frontLogIndex()
+	rf.commitIndex = rf.frontLogIndex()
+	rf.currentTerm = currentTerm
+	rf.votedFor = votedFor
+
 }
 
 // A service wants to switch to snapshot.  Only do so if Raft hasn't

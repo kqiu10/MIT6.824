@@ -9,7 +9,12 @@ package raft
 // test with the original before submitting.
 //
 
-import "sync"
+import (
+	"6.824/labgob"
+	"6.824/utils"
+	"bytes"
+	"sync"
+)
 
 type Persister struct {
 	mu        sync.Mutex
@@ -61,6 +66,18 @@ func (ps *Persister) SaveStateAndSnapshot(state []byte, snapshot []byte) {
 	defer ps.mu.Unlock()
 	ps.raftstate = clone(state)
 	ps.snapshot = clone(snapshot)
+}
+
+func (rf *Raft) raftState() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+
+	if e.Encode(rf.log) != nil || e.Encode(rf.currentTerm) != nil || e.Encode(rf.votedFor) != nil {
+		utils.Debug(utils.DError, "S%d encode fail", rf.me)
+		panic("encode fail")
+	}
+	data := w.Bytes()
+	return data
 }
 
 func (ps *Persister) ReadSnapshot() []byte {
