@@ -247,43 +247,6 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-// The ticker go routine starts a new election if this peer hasn't received
-// heartsbeats recently.
-func (rf *Raft) ticker() {
-	for rf.killed() == false {
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
-		rf.mu.Lock()
-		switch rf.state {
-		case FollowerState:
-			if rf.electionTimeout() {
-				rf.ChangeState(candidateState)
-				utils.Debug(utils.DInfo, "S%d Election timeout, starting election, T%d", rf.me, rf.currentTerm)
-				rf.doElection()
-				rf.resetElectionTime()
-			}
-		case candidateState:
-			if rf.electionTimeout() {
-				rf.ChangeState(candidateState)
-				utils.Debug(utils.DInfo, "S%d Election timeout, starting election, T%d", rf.me, rf.currentTerm)
-				rf.doElection()
-				rf.resetElectionTime()
-			}
-		case leaderState:
-			if rf.heartbeatTimeout() {
-				utils.Debug(utils.DInfo, "S%d heartbeat timeout, starting sending heartbeat, T%d", rf.me, rf.currentTerm)
-				rf.doAppendEntries()
-				rf.resetHeartbeatTime()
-			}
-
-		}
-		rf.mu.Unlock()
-		time.Sleep(time.Duration(gap_time) * time.Millisecond)
-
-	}
-}
-
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
 // server's port is peers[me]. all the servers' peers[] arrays
