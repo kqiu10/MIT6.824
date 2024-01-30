@@ -98,9 +98,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) isConflict(args *AppendEntriesArgs) bool {
-
+	base_index := args.PrevLogIndex + 1
 	for idx, entry := range args.Entries {
-		rf_entry, err := rf.getEntry(idx)
+		rf_entry, err := rf.getEntry(idx + base_index)
 		if err < 0 {
 			return true
 		}

@@ -2,7 +2,6 @@ package raft
 
 import "6.824/utils"
 
-// example RequestVote RPC handler.
 func (rf *Raft) RequestVote(request *RequestVoteArgs, response *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()

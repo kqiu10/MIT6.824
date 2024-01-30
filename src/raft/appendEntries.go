@@ -12,8 +12,7 @@ func (rf *Raft) doAppendEntries() {
 
 		wantSendIndex := rf.nextIndex[i] - 1
 		if wantSendIndex < rf.frontLogIndex() {
-			utils.Debug(utils.DError, "S%d S%d index smaller than 0 (%d < 0)", rf.me, i, wantSendIndex)
-			return
+			go rf.doInstallSnapshot(i)
 		} else {
 			go rf.appendTo(i)
 		}

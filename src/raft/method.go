@@ -12,6 +12,10 @@ func (rf *Raft) frontLogIndex() int {
 	return rf.log[0].Index
 }
 
+func (rf *Raft) frontLogTerm() int {
+	return rf.log[0].Term
+}
+
 func (rf *Raft) lastLogIndex() int {
 	return rf.log[len(rf.log)-1].Index
 }

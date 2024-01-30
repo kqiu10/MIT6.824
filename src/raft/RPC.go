@@ -35,3 +35,18 @@ type AppendEntriesReply struct {
 	XIndex  int
 	XLen    int
 }
+
+// InstallSnapshot RPC
+// InstallSnapshot RPCs are sent between Raft peers,
+// whereas the provided skeleton functions Snapshot/CondInstallSnapshot are used by the service to communicate to Raft.
+type InstallSnapshotArgs struct {
+	Term              int
+	LeaderId          int
+	LastIncludedIndex int
+	LastIncludedTerm  int
+	Data              []byte
+}
+
+type InstallSnapshotReply struct {
+	Term int
+}
