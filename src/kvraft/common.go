@@ -1,5 +1,7 @@
 package kvraft
 
+import "time"
+
 const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
@@ -31,3 +33,31 @@ type GetReply struct {
 	Err   Err
 	Value string
 }
+
+type OPType string
+
+const (
+	OpGet    OPType = "Get"
+	OpPut    OPType = "Put"
+	OpAppend OPType = "Append"
+)
+
+type CmdArgs struct {
+	OPType   OPType
+	Key      string
+	Value    string
+	ClientId int64
+	SeqId    int64
+}
+
+type CmdReply struct {
+	Err   Err
+	Value string
+}
+
+const (
+	RetryTimeout    time.Duration = time.Duration(1) * time.Millisecond
+	CmdTimeout      time.Duration = time.Duration(2) * time.Second
+	GapTime         time.Duration = time.Duration(5) * time.Millisecond
+	SnapshotGapTime time.Duration = time.Duration(10) * time.Millisecond
+)
