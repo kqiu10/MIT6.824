@@ -6,6 +6,7 @@ const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongLeader = "ErrWrongLeader"
+	ErrTimeout     = "ErrTimeout"
 )
 
 type Err string
@@ -53,6 +54,21 @@ type CmdArgs struct {
 type CmdReply struct {
 	Err   Err
 	Value string
+}
+
+type IndexAndTerm struct {
+	index int
+	term  int
+}
+
+type OpResp struct {
+	Err   Err
+	Value string
+}
+
+type OpContext struct {
+	SeqId int64
+	Reply OpResp
 }
 
 const (

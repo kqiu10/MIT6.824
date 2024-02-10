@@ -16,6 +16,8 @@ type Clerk struct {
 	clientId int64
 }
 
+const CommandRPC = "KVServer.Command"
+
 func nrand() int64 {
 	max := big.NewInt(int64(1) << 62)
 	bigx, _ := rand.Int(rand.Reader, max)
@@ -60,7 +62,7 @@ func (ck *Clerk) sendCmd(key string, value string, OPType OPType) string {
 	for time.Since(t0).Seconds() < 10 {
 		reply := CmdReply{}
 
-		ok := ck.servers[ck.leaderId].Call("KVServer.Command", &args, &reply)
+		ok := ck.servers[ck.leaderId].Call(CommandRPC, &args, &reply)
 
 		if !ok {
 			utils.Debug(utils.DWarn, "Fail to talk to %v, trying to talk to the next server %v", ck.leaderId, (ck.leaderId+1)%len(ck.servers))
