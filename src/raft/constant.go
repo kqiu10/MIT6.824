@@ -30,5 +30,5 @@ const (
 	gap_time            int = 3
 	election_base_time  int = 300
 	election_range_time int = 100
-	heartbeat_time      int = 200
+	heartbeat_time      int = 50
 )
