@@ -77,3 +77,7 @@ const (
 	GapTime         time.Duration = time.Duration(5) * time.Millisecond
 	SnapshotGapTime time.Duration = time.Duration(10) * time.Millisecond
 )
+
+const snapshotLogGap int = 3
+
+const snapshotThreshold float32 = 0.8

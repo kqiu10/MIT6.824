@@ -1,12 +1,5 @@
 package kvraft
 
-import (
-	"6.824/labgob"
-	"6.824/utils"
-	"bytes"
-	"log"
-)
-
 type KV struct {
 	Kvmap map[string]string
 }
@@ -35,25 +28,6 @@ func (kv *KV) Append(key string, value string) Err {
 
 func NewKV() *KV {
 	return &KV{make(map[string]string)}
-}
-
-func (kv *KVServer) setSnapshot(snapshot []byte) {
-	if snapshot == nil || len(snapshot) < 1 {
-		return
-	}
-	utils.Debug(utils.DServer, "S%d setSnapshot", kv.me)
-	r := bytes.NewBuffer(snapshot)
-	d := labgob.NewDecoder(r)
-
-	var kvMap KV
-	var lastCmdContext map[int64]OpContext
-
-	if d.Decode(&kvMap) != nil || d.Decode(&lastCmdContext) != nil {
-		log.Fatal("server setSnapshot decode error \n")
-	} else {
-		kv.KvMap = &kvMap
-		kv.LastCmdContext = lastCmdContext
-	}
 }
 
 func (kv *KVServer) Opt(cmd Op) (string, Err) {

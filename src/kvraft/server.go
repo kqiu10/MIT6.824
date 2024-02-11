@@ -104,5 +104,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// start applier goroutine to apply changes to raft
 	go kv.applier()
 
+	// start doSnapshot goroutine to periodically passing snapshot to Raft
+	go kv.passSnapshot()
+
 	return kv
 }
