@@ -46,18 +46,6 @@ type KVServer struct {
 	lastSnapshot   int
 }
 
-type KV struct {
-	Kvmap map[string]string
-}
-
-func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
-}
-
-func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
-}
-
 // the tester calls Kill() when a KVServer instance won't
 // be needed again. for your convenience, we supply
 // code to set rf.dead (without needing a lock),
@@ -104,6 +92,17 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
+	kv.KvMap = NewKV()
+	kv.cmdRespChans = make(map[IndexAndTerm]chan OpResp)
+	kv.LastCmdContext = make(map[int64]OpContext)
+	kv.lastApplied = 0
+	kv.lastSnapshot = 0
+
+	// load data from persister
+	kv.setSnapshot(persister.ReadSnapshot())
+
+	// start applier goroutine to apply changes to raft
+	go kv.applier()
 
 	return kv
 }
